@@ -54,7 +54,6 @@ def make_positions_table(data, cur, conn):
 #     created for you -- see make_positions_table above for details.
 
 def make_players_table(data, cur, conn):
-    # pass
     players = data['squad']
     cur.execute("CREATE TABLE IF NOT EXISTS Players (id INTEGER PRIMARY KEY, name TEXT, position_id INTEGER, birthyear INTEGER, nationality TEXT)")
     for player in players:
@@ -183,6 +182,7 @@ def make_winners_table(data, cur, conn):
                 cur.execute("INSERT INTO Winners (Season, Winner) VALUES (?, ?)",
                             (season['season'], winner))
     conn.commit()
+    pass
 
 def make_seasons_table(data, cur, conn):
     pass
@@ -198,6 +198,7 @@ def winners_since_search(year, cur, conn):
     """, (year,))
     rows = cur.fetchall()
     return {name: wins for name, wins in rows}
+    pass
 
 
 class TestAllMethods(unittest.TestCase):
