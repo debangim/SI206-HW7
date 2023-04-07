@@ -187,36 +187,7 @@ def make_winners_table(data, cur, conn):
     conn.commit()
 
 def make_seasons_table(data, cur, conn):
-    seasons = data['seasons']
-
-    # Iterate through each season
-    for season in seasons:
-        # Skip current season
-        if season['id'] == 2022:
-            continue
-
-        # Get winner name for this season
-        winner_id = None
-        for comp in season['competitions']:
-            if comp['name'] == 'Premier League':
-                winner_name = comp['winner']['name']
-                # Look up winner_id in Winners table
-                cur.execute("SELECT id FROM Winners WHERE name = %s", (winner_name,))
-                winner_id = cur.fetchone()
-                if winner_id is not None:
-                    winner_id = winner_id[0]
-                break
-
-        # If no winner listed, skip this season
-        if winner_id is None:
-            continue
-
-        # Add season to Seasons table
-        cur.execute("INSERT INTO Seasons (id, winner_id, end_year) VALUES (%s, %s, %s)",
-                    (season['id'], winner_id, season['endYear']))
-
-    # Commit changes to database
-    conn.commit()
+    pass
 
 def winners_since_search(year, cur, conn):
     cur.execute("""
