@@ -100,7 +100,6 @@ def birthyear_nationality_search(age, country, cur, conn):
     current_year = datetime.datetime.now().year
     birth_year = current_year - age
 
-    # select players from the country born before the calculated year
     cur.execute("SELECT name, nationality, birthyear FROM Players JOIN Positions ON Players.position_id = Positions.id WHERE birthyear < ? AND nationality = ?", (birth_year, country))
     results = cur.fetchall()
 
@@ -130,7 +129,6 @@ def position_birth_search(position, age, cur, conn):
     current_year = datetime.datetime.now().year
     birth_year = current_year - age
 
-    # select players who play the position passed to the function
     cur.execute("SELECT name, position, birthyear FROM Players JOIN Positions ON Players.position_id = Positions.id WHERE position = ? AND birthyear > ?", (position, birth_year))
     results = cur.fetchall()
 
