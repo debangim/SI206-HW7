@@ -8,7 +8,6 @@ import unittest
 import sqlite3
 import json
 import os
-import datetime
 
 def read_data(filename):
     full_path = os.path.join(os.path.dirname(__file__), filename)
@@ -54,12 +53,19 @@ def make_positions_table(data, cur, conn):
 #     created for you -- see make_positions_table above for details.
 
 def make_players_table(data, cur, conn):
-    players = data['squad']
     cur.execute("CREATE TABLE IF NOT EXISTS Players (id INTEGER PRIMARY KEY, name TEXT, position_id INTEGER, birthyear INTEGER, nationality TEXT)")
-    for player in players:
-        cur.execute("SELECT id FROM Positions WHERE position = ?", (player['position'],))
-        position_id = cur.fetchone()[0]
-        cur.execute("INSERT INTO Players (id, name, position_id, birthyear, nationality) VALUES (?,?,?,?,?)",(player['id'], player['name'], position_id, player['dateOfBirth'][0:4], player['nationality']))
+    dict = {}
+    cur.execute("SELECT * FROM Positions")
+    rows = cur.fetchall()
+    for row in rows:
+        dict[row[1]] = row[0]
+    for player in data['squad']:
+        position = player['position']
+        position_id = dict[position]
+        name = player['name']
+        birthyear = player['dateOfBirth'][0:4]
+        nationality = player['nationality']
+        cur.execute("INSERT OR IGNORE INTO Players (id, name, position_id, birthyear, nationality) VALUES (?,?,?,?,?)", (player['id'], name, position_id, birthyear, nationality))
     conn.commit()
 
 ## [TASK 2]: 10 points
@@ -73,10 +79,13 @@ def make_players_table(data, cur, conn):
         # the player's name, their position_id, and their nationality.
 
 def nationality_search(countries, cur, conn):
-    query = "SELECT name, position_id, nationality FROM Players WHERE nationality IN ({seq})".format(seq=','.join(['?']*len(countries)))
-    cur.execute(query, countries)
-    rows = cur.fetchall()
-    return rows
+    results = []
+    for country in countries:
+        cur.execute("SELECT name, position_id, nationality FROM Players WHERE nationality=?", (country,))
+        rows = cur.fetchall()
+        for player in rows:
+            results.append(player)
+    return results
 
 ## [TASK 3]: 10 points
 # finish the function birthyear_nationality_search
@@ -95,16 +104,13 @@ def nationality_search(countries, cur, conn):
 
 
 def birthyear_nationality_search(age, country, cur, conn):
-    # pass
-    current_year = datetime.datetime.now().year
-    birth_year = current_year - age
-
-    cur.execute("SELECT name, nationality, birthyear FROM Players JOIN Positions ON Players.position_id = Positions.id WHERE birthyear < ? AND nationality = ?", (birth_year, country))
-    results = cur.fetchall()
-
-    if not results:
-        return []
-
+    
+    results = []
+    birthyear = 2023 - age
+    cur.execute("SELECT name, nationality, birthyear FROM Players WHERE nationality=? AND birthyear<?", (country, birthyear))
+    rows = cur.fetchall()
+    for row in rows:
+        results.append(row)
     return results
 
 ## [TASK 4]: 15 points
@@ -125,18 +131,14 @@ def birthyear_nationality_search(age, country, cur, conn):
     # HINT: You'll have to use JOIN for this task.
 
 def position_birth_search(position, age, cur, conn):
-    current_year = datetime.datetime.now().year
-    birth_year = current_year - age
-
-    cur.execute("SELECT name, position, birthyear FROM Players JOIN Positions ON Players.position_id = Positions.id WHERE position = ? AND birthyear > ?", (position, birth_year))
-    results = cur.fetchall()
-
-    if not results:
-        return []
-
+    results = []
+    birthyear = 2023 - age
+    cur.execute("SELECT Players.name, Positions.position, Players.birthyear FROM Players JOIN Positions ON Players.position_id = Positions.id WHERE Positions.position=? AND Players.birthyear>?", (position, birthyear))
+    rows = cur.fetchall()
+    for row in rows:
+        results.append(row)
     return results
     
-
 
 # [EXTRA CREDIT]
 # You’ll make 3 new functions, make_winners_table(), make_seasons_table(),
@@ -174,31 +176,39 @@ def position_birth_search(position, age, cur, conn):
 #     the passed year. 
 
 def make_winners_table(data, cur, conn):
-    cur.execute("DROP TABLE IF EXISTS Winners")
-    cur.execute("CREATE TABLE Winners(Season TEXT, Winner TEXT)")
-    for season in data:
-        if 'winner' in season:
-            for winner in season['winners']:
-                cur.execute("INSERT INTO Winners (Season, Winner) VALUES (?, ?)",
-                            (season['season'], winner))
+    winners = []
+    for win in data['seasons']:
+        if 'name' in win:
+            if win not in winners:
+                winners.append(win)
+        cur.execute("CREATE TABLE IF NOT EXISTS Winners (id INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+        for i in range(len(winners)):
+            cur.execute("INSERT OR IGNORE INTO Winners (id, name) VALUES (?,?)",(i, winners[i]))
     conn.commit()
-    pass
 
 def make_seasons_table(data, cur, conn):
-    pass
+    cur.execute("CREATE TABLE IF NOT EXISTS Seasons (id INTEGER PRIMARY KEY, winner_id TEXT UNIQUE, end_year INT UNIQUE)")
+    winners = {team['name']: team['id'] for team in data['seasons'] if 'name' in team}
+
+    for season in data['seasons']:
+        if 'winner' in season:
+            if 'name' in season:
+                winner_name = season['winner']['name']
+                if winner_name in winners:
+                    winner_id = winners[winner_name]
+                    cur.execute("INSERT OR IGNORE INTO Seasons (id, winner_id, end_year) VALUES (?, ?, ?)",(season['id'], winner_id, int(season['year'])))
+    conn.commit()
 
 def winners_since_search(year, cur, conn):
-    cur.execute("""
-        SELECT Winners.name, COUNT(*) as wins
-        FROM Winners
-        JOIN Seasons ON Winners.id = Seasons.winner_id
-        WHERE end_year > ?
-        GROUP BY Winners.name
-        ORDER BY wins DESC
-    """, (year,))
-    rows = cur.fetchall()
-    return {name: wins for name, wins in rows}
-    pass
+    cur.execute("SELECT name FROM Winners WHERE id IN (SELECT winner_id FROM Seasons WHERE end_year >= ?)", (year,))
+    results = cur.fetchall()
+    result = {}
+    for row in results:
+        if row[0] not in result:
+            result[row[0]] = 1
+        else:
+            result[row[0]] += 1
+    return result
 
 
 class TestAllMethods(unittest.TestCase):
@@ -256,18 +266,20 @@ class TestAllMethods(unittest.TestCase):
     def test_make_winners_table(self):
         self.cur2.execute('SELECT * from Winners')
         winners_list = self.cur2.fetchall()
-
-        pass
-
+        print(winners_list)
+        self.assertEqual(type(winners_list[0][0]), int)
+        self.assertEqual(type(winners_list[0][1]), str)
+     
     def test_make_seasons_table(self):
         self.cur2.execute('SELECT * from Seasons')
         seasons_list = self.cur2.fetchall()
-
-        pass
+        print(seasons_list)
+        self.assertEqual(type(seasons_list[0][0]), str)
+        self.assertEqual(type(seasons_list[0][1]), int)
 
     def test_winners_since_search(self):
-
         pass
+        
 
 
 def main():
